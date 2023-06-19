@@ -128,8 +128,8 @@ double* trayectoria(double time){
     double xd = r*sin(thetad);
     double yd = -r*cos(thetad);
 
-    double xdp = r*thetadd*cos(thetad);
-    double ydp = r*thetadd*sin(thetad);
+    double xdp = r*thetadp*cos(thetad);
+    double ydp = r*thetadp*sin(thetad);
 
     // Generamos el arreglo de salida
     resultado[0] = xd;
@@ -184,10 +184,13 @@ double* mapeo(double *vectorLlantas){
     return resultado;
 }
 
-double* salida(double *wheels, double teta){
+double* salida(double *wheels, double theta){
     int r = 1;
     double L = 1.5;
+    double wd = wheels[0];
+    double wi = wheels[1];
     double *salida;
+
 
     double xp = (r/2)*(wd+wi)*cos(theta);
     double yp = (r/2)*(wd+wi)*sin(theta);
