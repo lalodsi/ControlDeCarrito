@@ -48,7 +48,7 @@ void setup()
 
 void loop()
 {
-    if (millis() - timeold >= 250){  // Se actualiza cada segundo
+    if (millis() - timeold >= 1000){  // Se actualiza cada segundo
       noInterrupts(); //Don't process interrupts during calculations // Desconectamos la interrupción para que no actué en esta parte del programa.
         rpmI = ((float)pulsesI / (float)SLOTS_ENCODER ) * 60 * 4 ; // Calculamos las revoluciones por minuto
         rpmD = (60 * 1000 / SLOTS_ENCODER )/ (millis() - timeold)* pulsesI; // Calculamos las revoluciones por minuto
@@ -74,8 +74,9 @@ void loop()
         // Serial.print("\nTiempo Derecha: ");
         // Serial.println(debounceD, 2);
         // Serial.print("\n\n\n\n\n\n\n\n\n");
-        Serial.print(rpmI);
-        Serial.print(",");
+        Serial.print(pulsesI);
+        // Serial.print(", ");
+        Serial.println(",");
         //Serial.println(velocityI);
         pulsesI = 0;  // Inicializamos los pulsos.
         pulsesD = 0;  // Inicializamos los pulsos.
@@ -84,25 +85,29 @@ void loop()
 }
 
 void counterI(){
-    debounceI = micros();
-    if(
-        digitalRead(PIN_ENCODER_I)
-        // (debounceI > 100)
-    )
+    // Serial.println(debounceI);
+    if (digitalRead(PIN_ENCODER_I))
     {
-        // Vuelve a comprobar que el encoder envia una señal buena y luego comprueba que el tiempo es superior a 1000 microsegundos y vuelve a comprobar que la señal es correcta.
-        // debounceI = micros(); // Almacena el tiempo para comprobar que no contamos el rebote que hay en la señal.
-        pulsesI++;
+        delay(50);
+        if(digitalRead(PIN_ENCODER_I))
+        {
+            // Vuelve a comprobar que el encoder envia una señal buena y luego
+            // comprueba que el tiempo es superior a 50 microsegundos y vuelve
+            // a comprobar que la señal es correcta.
+            pulsesI++;
+        }
     }
 }
 void counterD(){
-    if(
-        digitalRead(PIN_ENCODER_I) &&
-        (debounceD > 500)
-    )
+    if (digitalRead(PIN_ENCODER_D))
     {
-        // Vuelve a comprobar que el encoder envia una señal buena y luego comprueba que el tiempo es superior a 1000 microsegundos y vuelve a comprobar que la señal es correcta.
-        debounceD = micros(); // Almacena el tiempo para comprobar que no contamos el rebote que hay en la señal.
-        pulsesD++;
+        delay(50);
+        if(digitalRead(PIN_ENCODER_D))
+        {
+            // Vuelve a comprobar que el encoder envia una señal buena y luego
+            // comprueba que el tiempo es superior a 50 microsegundos y vuelve
+            // a comprobar que la señal es correcta.
+            pulsesD++;
+        }
     }
 }
