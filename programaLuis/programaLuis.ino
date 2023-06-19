@@ -2,10 +2,10 @@
 // Entradas digitales
 #define PIN_ENCODER_I 2
 #define PIN_ENCODER_D 3
-#define PIN_MOTOR_A_1 6
-#define PIN_MOTOR_A_2 7
-#define PIN_MOTOR_B_1 8
-#define PIN_MOTOR_B_2 9
+#define PIN_MOTOR_A_1 9
+#define PIN_MOTOR_A_2 8
+#define PIN_MOTOR_B_1 7
+#define PIN_MOTOR_B_2 6
 
 // Matematicas y medidas
 #define PI 3.1416
@@ -17,7 +17,8 @@ unsigned int rpmI = 0;           // Revoluciones por minuto calculadas.
 unsigned int rpmD = 0;           // Revoluciones por minuto calculadas.
 float velocityI = 0;                 //Velocidad en [Km/h]
 float velocityD = 0;                 //Velocidad en [Km/h]
-unsigned long timeold = 0;  // Tiempo transcurrido
+// unsigned long timeold = 0;  // Tiempo transcurrido
+double timeold = 0;  // Tiempo transcurrido
 const int wheel_diameter = 64;   // Diámetro de la rueda pequeña[mm]
 static volatile unsigned long debounceI = 0; // Tiempo del rebote.
 static volatile unsigned long debounceD = 0; // Tiempo del rebote.
@@ -32,6 +33,10 @@ double f = 1/T;
 double L = 1.5;
 
 // Variables de control
+double wd_d = 0;
+double wi_d = 0;
+double wd = 0;
+double wi = 0;
 double Xp_1;
 double Yp_1;
 double thetap_1;
@@ -42,11 +47,17 @@ double X;
 double Y;
 double theta;
 
-// Señales internas
-double* trayectoria_signals;
-double* control_signals;
-double* mapeo_signals;
-double* planta_signals;
+// Variables trayectoria
+double thetad = 0;
+double thetadp = 0;
+double Xd = 0;
+double Yd = 0;
+double Xdp = 0;
+double Ydp = 0;
+
+// Variables control y planta
+double V = 0;
+double W = 0;
 
 
 // Variables Externas
@@ -84,17 +95,19 @@ void loop()
 {
     if (millis() - timeold >= 1000){  // Se actualiza cada segundo
       noInterrupts(); //Don't process interrupts during calculations // Desconectamos la interrupción para que no actué en esta parte del programa.
-        rpmI = ((float)pulsesI / (float)SLOTS_ENCODER ) * 60 * 4 ; // Calculamos las revoluciones por minuto
-        rpmD = ((float)pulsesD / (float)SLOTS_ENCODER ) * 60 * 4 ; // Calculamos las revoluciones por minuto
-        velocityI = rpmI * PI * WHEEL_DIAMETER * 60 / 1000000; // Cálculo de la velocidad en [Km/h] 
-        velocityD = rpmI * PI * WHEEL_DIAMETER * 60 / 1000000; // Cálculo de la velocidad en [Km/h] 
-        timeold = millis(); // Almacenamos el tiempo actual.
+        // rpmI = ((float)pulsesI / (float)SLOTS_ENCODER ) * 60 * 4 ; // Calculamos las revoluciones por minuto
+        // rpmD = ((float)pulsesD / (float)SLOTS_ENCODER ) * 60 * 4 ; // Calculamos las revoluciones por minuto
+        wd = pulsesD * 2.0 * PI;
+        wi = pulsesI * 2.0 * PI;
+        // velocityI = rpmI * PI * WHEEL_DIAMETER * 60 / 1000000; // Cálculo de la velocidad en [Km/h] 
+        // velocityD = rpmI * PI * WHEEL_DIAMETER * 60 / 1000000; // Cálculo de la velocidad en [Km/h] 
+        timeold = millis() / 100000 ; // Almacenamos el tiempo actual.
 
         // Bloques
-        trayectoria_signals = trayectoria(timeold);
-        control_signals = controlYPlanta(trayectoria_signals);
-        mapeo_signals = mapeo(control_signals);
-        planta_signals = planta(mapeo_signals,theta);
+        trayectoria(timeold);
+        controlYPlanta();
+        mapeo();
+        // planta();
         //Serial.print("Tiempo transcurrido: ");
         //Serial.print(millis()/1000); 
         // Serial.print("\nVelocidad en RPMI: ");
@@ -114,7 +127,14 @@ void loop()
         // Serial.print("\nTiempo Derecha: ");
         // Serial.println(debounceD, 2);
         // Serial.print("\n\n\n\n\n\n\n\n\n");
-        Serial.print(deltaX);
+        Serial.print(wd_d);
+        Serial.print(",");
+        Serial.print(wd);
+        Serial.print(",");
+        Serial.print(wi_d);
+        Serial.print(",");
+        Serial.print(wi);
+
         // Serial.print(", ");
         Serial.println(",");
         //Serial.println(velocityI);
@@ -134,6 +154,7 @@ void counterI(){
             // Vuelve a comprobar que el encoder envia una señal buena y luego
             // comprueba que el tiempo es superior a 50 microsegundos y vuelve
             // a comprobar que la señal es correcta.
+            moverMotorI(wi_d, wi);
             deltaX = micros() - debounceI;
             pulsesI++;
         }
@@ -151,6 +172,7 @@ void counterD(){
             // Vuelve a comprobar que el encoder envia una señal buena y luego
             // comprueba que el tiempo es superior a 50 microsegundos y vuelve
             // a comprobar que la señal es correcta.
+            moverMotorD(wd_d, wd);
             deltaX = micros() - debounceD;
             pulsesD++;
         }
@@ -162,83 +184,47 @@ void counterD(){
 /**
  * Genera la trayectoria deseada
 */
-double* trayectoria(double time){
-    double *resultado; //Apuntador para generar la salida
+void trayectoria(double time){
+    thetad = 2*PI*f*time;
+    thetadp = 2*PI*f;
 
-    double thetad = 2*PI*f*time;
-    double thetadp = 2*PI*f;
+    Xd = r*sin(thetad);
+    Yd = -r*cos(thetad);
 
-    double xd = r*sin(thetad);
-    double yd = -r*cos(thetad);
+    Xdp = r*thetadp*cos(thetad);
+    Ydp = r*thetadp*sin(thetad);
 
-    double xdp = r*thetadp*cos(thetad);
-    double ydp = r*thetadp*sin(thetad);
-
-    // Generamos el arreglo de salida
-    resultado[0] = xd;
-    resultado[1] = yd;
-    resultado[2] = thetad;
-    resultado[3] = xdp;
-    resultado[4] = ydp;
-    resultado[5] = thetadp;
-    return resultado;
 }
 
-double* controlYPlanta(double *entradas){
-    double Xd = entradas[0];
-    double Yd = entradas[0];
-    double thetad = entradas[0];
-    double Xdp = entradas[0];
-    double Ydp = entradas[0];
-    double thetadp = entradas[0];
-
+void controlYPlanta(){
     double k1 = 20;
     double k2 = 20;
     double d = 0.01f;
-    double *resultado;
 
     double V1aux = Xdp + k1*(Xd - X);
     double V2aux = Ydp + k2*(Yd - Y);
 
-    double V = V1aux*cos(thetad) + V2aux*sin(thetad);
-    double W = -V1aux*sin(thetad)/d + V2aux*cos(thetad)/d;
-    resultado[0] = V;
-    resultado[1] = W;
+    V = V1aux*cos(thetad) + V2aux*sin(thetad);
+    W = -V1aux*sin(thetad)/d + V2aux*cos(thetad)/d;
 }
 
-double* mapeo(double *vectorLlantas){
-    double V = vectorLlantas[0];
-    double W = vectorLlantas[1];
-    double *resultado;
-
+void mapeo(){
     // double T[2][2] = {{r/2, r/2}, {r/(2*L), r/(2*L)}} //r/2*[1 1; 1/L -1/L];
     double Tinv[2][2] = {{1/r, 1/(r*L)}, {1/r, -1/(r*L)}};
 
-    double wd = Tinv[0][0]*V + Tinv[0][1]*W;
-    double wi = Tinv[1][0]*V + Tinv[1][1]*W;
-    resultado[0] = wd;
-    resultado[1] = wi;
-    
-    return resultado;
+    wd_d = Tinv[0][0]*V + Tinv[0][1]*W;
+    wi_d = Tinv[1][0]*V + Tinv[1][1]*W;
 }
 
-double* planta(double *wheels, double theta){
-    double wd = wheels[0];
-    double wi = wheels[1];
-    double *salida;
-
+void planta(){
     // Valor anterior
     Xp_1 = Xp;
     Yp_1 = Yp;
     thetap_1 = thetap;
     // Nuevo valor
-    Xp = (r/2)*(wd+wi)*cos(theta);
-    Yp = (r/2)*(wd+wi)*sin(theta);
-    thetap = (r/2*L)*(wd-wi);
-
-    salida[0] = Xp;
-    salida[1] = Yp;
-    salida[2] = thetap;
+    Xp = (r/2)*(wd_d+wi_d)*cos(theta);
+    Yp = (r/2)*(wd_d+wi_d)*sin(theta);
+    thetap = (r/2*L)*(wd_d-wi_d);
 }
 
 void integral(double delta){
@@ -247,3 +233,24 @@ void integral(double delta){
     theta = (thetap - thetap_1)*delta;
 }
 
+void moverMotorI(double velocidad_d, double velocidad_r){
+    if (velocidad_d > velocidad_r) {
+        digitalWrite(PIN_MOTOR_A_1, HIGH);
+        digitalWrite(PIN_MOTOR_A_2, LOW);
+    }
+    else {
+        digitalWrite(PIN_MOTOR_A_1, LOW);
+        digitalWrite(PIN_MOTOR_A_2, LOW);
+    }
+}
+
+void moverMotorD(double velocidad_d, double velocidad_r){
+    if (velocidad_d > velocidad_r) {
+        digitalWrite(PIN_MOTOR_B_1, HIGH);
+        digitalWrite(PIN_MOTOR_B_2, LOW);
+    }
+    else {
+        digitalWrite(PIN_MOTOR_B_1, LOW);
+        digitalWrite(PIN_MOTOR_B_2, LOW);
+    }
+}
