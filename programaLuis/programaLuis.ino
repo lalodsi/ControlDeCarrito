@@ -21,6 +21,33 @@ unsigned long timeold = 0;  // Tiempo transcurrido
 const int wheel_diameter = 64;   // Diámetro de la rueda pequeña[mm]
 static volatile unsigned long debounceI = 0; // Tiempo del rebote.
 static volatile unsigned long debounceD = 0; // Tiempo del rebote.
+static volatile unsigned long deltaX = 0; // Tiempo de transcurrido entre pulsos.
+
+// Constantes Trayectoria
+double T = 10;
+int r = 1; // Radio del circulo
+double f = 1/T;
+
+// Constantes Mapeo
+double L = 1.5;
+
+// Variables de control
+double Xp_1;
+double Yp_1;
+double thetap_1;
+double Xp;
+double Yp;
+double thetap;
+double X;
+double Y;
+double theta;
+
+// Señales internas
+double* trayectoria_signals;
+double* control_signals;
+double* mapeo_signals;
+double* planta_signals;
+
 
 // Variables Externas
 #define SLOTS_ENCODER 20
@@ -35,6 +62,13 @@ void setup()
     pinMode(PIN_MOTOR_B_2, OUTPUT);
 
     Serial.begin(9600);
+
+    Xp = 0;
+    Yp = 0;
+    thetap = 0;
+    X = 0;
+    Y = 0;
+    theta = 0;
 
     pulsesI = 0;
     pulsesD = 0;
@@ -51,10 +85,16 @@ void loop()
     if (millis() - timeold >= 1000){  // Se actualiza cada segundo
       noInterrupts(); //Don't process interrupts during calculations // Desconectamos la interrupción para que no actué en esta parte del programa.
         rpmI = ((float)pulsesI / (float)SLOTS_ENCODER ) * 60 * 4 ; // Calculamos las revoluciones por minuto
-        rpmD = (60 * 1000 / SLOTS_ENCODER )/ (millis() - timeold)* pulsesI; // Calculamos las revoluciones por minuto
+        rpmD = ((float)pulsesD / (float)SLOTS_ENCODER ) * 60 * 4 ; // Calculamos las revoluciones por minuto
         velocityI = rpmI * PI * WHEEL_DIAMETER * 60 / 1000000; // Cálculo de la velocidad en [Km/h] 
         velocityD = rpmI * PI * WHEEL_DIAMETER * 60 / 1000000; // Cálculo de la velocidad en [Km/h] 
         timeold = millis(); // Almacenamos el tiempo actual.
+
+        // Bloques
+        trayectoria_signals = trayectoria(timeold);
+        control_signals = controlYPlanta(trayectoria_signals);
+        mapeo_signals = mapeo(control_signals);
+        planta_signals = planta(mapeo_signals,theta);
         //Serial.print("Tiempo transcurrido: ");
         //Serial.print(millis()/1000); 
         // Serial.print("\nVelocidad en RPMI: ");
@@ -74,7 +114,7 @@ void loop()
         // Serial.print("\nTiempo Derecha: ");
         // Serial.println(debounceD, 2);
         // Serial.print("\n\n\n\n\n\n\n\n\n");
-        Serial.print(pulsesI);
+        Serial.print(deltaX);
         // Serial.print(", ");
         Serial.println(",");
         //Serial.println(velocityI);
@@ -94,10 +134,14 @@ void counterI(){
             // Vuelve a comprobar que el encoder envia una señal buena y luego
             // comprueba que el tiempo es superior a 50 microsegundos y vuelve
             // a comprobar que la señal es correcta.
+            deltaX = micros() - debounceI;
             pulsesI++;
         }
     }
+    integral(deltaX);
+    debounceI = micros();
 }
+
 void counterD(){
     if (digitalRead(PIN_ENCODER_D))
     {
@@ -107,19 +151,18 @@ void counterD(){
             // Vuelve a comprobar que el encoder envia una señal buena y luego
             // comprueba que el tiempo es superior a 50 microsegundos y vuelve
             // a comprobar que la señal es correcta.
+            deltaX = micros() - debounceD;
             pulsesD++;
         }
     }
+    integral(deltaX);
+    debounceD = micros();
 }
 
 /**
  * Genera la trayectoria deseada
 */
 double* trayectoria(double time){
-    // Constantes
-    double T = 10;
-    int r = 1; // Radio del circulo
-    double f = 1/T;
     double *resultado; //Apuntador para generar la salida
 
     double thetad = 2*PI*f*time;
@@ -148,9 +191,6 @@ double* controlYPlanta(double *entradas){
     double Xdp = entradas[0];
     double Ydp = entradas[0];
     double thetadp = entradas[0];
-    double X = entradas[0];
-    double Y = entradas[0];
-    double theta = entradas[0];
 
     double k1 = 20;
     double k2 = 20;
@@ -167,8 +207,6 @@ double* controlYPlanta(double *entradas){
 }
 
 double* mapeo(double *vectorLlantas){
-    int r = 1;
-    double L = 1.5;
     double V = vectorLlantas[0];
     double W = vectorLlantas[1];
     double *resultado;
@@ -184,20 +222,28 @@ double* mapeo(double *vectorLlantas){
     return resultado;
 }
 
-double* salida(double *wheels, double theta){
-    int r = 1;
-    double L = 1.5;
+double* planta(double *wheels, double theta){
     double wd = wheels[0];
     double wi = wheels[1];
     double *salida;
 
+    // Valor anterior
+    Xp_1 = Xp;
+    Yp_1 = Yp;
+    thetap_1 = thetap;
+    // Nuevo valor
+    Xp = (r/2)*(wd+wi)*cos(theta);
+    Yp = (r/2)*(wd+wi)*sin(theta);
+    thetap = (r/2*L)*(wd-wi);
 
-    double xp = (r/2)*(wd+wi)*cos(theta);
-    double yp = (r/2)*(wd+wi)*sin(theta);
-    double thetap = (r/2*L)*(wd-wi);
-
-    salida[0] = xp;
-    salida[1] = yp;
+    salida[0] = Xp;
+    salida[1] = Yp;
     salida[2] = thetap;
+}
+
+void integral(double delta){
+    X = (Xp - Xp_1)*delta;
+    X = (Yp - Xp_1)*delta;
+    theta = (thetap - thetap_1)*delta;
 }
 
