@@ -111,3 +111,90 @@ void counterD(){
         }
     }
 }
+
+/**
+ * Genera la trayectoria deseada
+*/
+double* trayectoria(double time){
+    // Constantes
+    double T = 10;
+    int r = 1; // Radio del circulo
+    double f = 1/T;
+    double *resultado; //Apuntador para generar la salida
+
+    double thetad = 2*PI*f*time;
+    double thetadp = 2*PI*f;
+
+    double xd = r*sin(thetad);
+    double yd = -r*cos(thetad);
+
+    double xdp = r*thetadd*cos(thetad);
+    double ydp = r*thetadd*sin(thetad);
+
+    // Generamos el arreglo de salida
+    resultado[0] = xd;
+    resultado[1] = yd;
+    resultado[2] = thetad;
+    resultado[3] = xdp;
+    resultado[4] = ydp;
+    resultado[5] = thetadp;
+    return resultado;
+}
+
+double* controlYPlanta(double *entradas){
+    double Xd = entradas[0];
+    double Yd = entradas[0];
+    double thetad = entradas[0];
+    double Xdp = entradas[0];
+    double Ydp = entradas[0];
+    double thetadp = entradas[0];
+    double X = entradas[0];
+    double Y = entradas[0];
+    double theta = entradas[0];
+
+    double k1 = 20;
+    double k2 = 20;
+    double d = 0.01f;
+    double *resultado;
+
+    double V1aux = Xdp + k1*(Xd - X);
+    double V2aux = Ydp + k2*(Yd - Y);
+
+    double V = V1aux*cos(thetad) + V2aux*sin(thetad);
+    double W = -V1aux*sin(thetad)/d + V2aux*cos(thetad)/d;
+    resultado[0] = V;
+    resultado[1] = W;
+}
+
+double* mapeo(double *vectorLlantas){
+    int r = 1;
+    double L = 1.5;
+    double V = vectorLlantas[0];
+    double W = vectorLlantas[1];
+    double *resultado;
+
+    // double T[2][2] = {{r/2, r/2}, {r/(2*L), r/(2*L)}} //r/2*[1 1; 1/L -1/L];
+    double Tinv[2][2] = {{1/r, 1/(r*L)}, {1/r, -1/(r*L)}};
+
+    double wd = Tinv[0][0]*V + Tinv[0][1]*W;
+    double wi = Tinv[1][0]*V + Tinv[1][1]*W;
+    resultado[0] = wd;
+    resultado[1] = wi;
+    
+    return resultado;
+}
+
+double* salida(double *wheels, double teta){
+    int r = 1;
+    double L = 1.5;
+    double *salida;
+
+    double xp = (r/2)*(wd+wi)*cos(theta);
+    double yp = (r/2)*(wd+wi)*sin(theta);
+    double thetap = (r/2*L)*(wd-wi);
+
+    salida[0] = xp;
+    salida[1] = yp;
+    salida[2] = thetap;
+}
+
